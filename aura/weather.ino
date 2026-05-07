@@ -24,11 +24,43 @@
 #define LONGITUDE_DEFAULT "-0.1278"
 #define LOCATION_DEFAULT "London"
 #define DEFAULT_CAPTIVE_SSID "Aura"
-#define UPDATE_INTERVAL 600000UL  // 10 minutes
+#define UPDATE_INTERVAL 900000UL  // 15 minutes because open-meteo updates itself every hour
 
 // Night mode starts at 10pm and ends at 6am
 #define NIGHT_MODE_START_HOUR 22
 #define NIGHT_MODE_END_HOUR 6
+
+// custom colour defintions for the display
+const uint32_t bigTempNumber = 0xFFFFFF;      // WHITE - this is the big temp number on TFT
+const uint32_t feelsLike = 0xFFFFFF;          // WHITE - feels like text line
+const uint32_t BGcolour = 0x417A36;           // GREEN - background colour of the display
+const uint32_t topGradientColour = 0x00FF00;  // GREEN - Gradient colour at top (goes from dark to light)
+
+const uint32_t sevenDayForecast = 0xFFFFFF;  // WHITE - Saven Day forecast text line
+const uint32_t dayNameColour = 0xFFFFFF;     // WHITE - weekday names text colour
+const uint32_t dayHighColour = 0xFFFFFF;     // WHITE - default day highlight colour (temp dependant)
+const uint32_t bigBoxBackGnd = 0x000000;     // BLACK - the box surrounding the seven day info
+const uint32_t dailyLowColour = 0x69F0F0;    // LIGHT BLUE - day low temp colour (temp dependant)
+
+const uint32_t hourlyBoxColour = 0xFFFFFF;   // WHITE - colour box for HOURLY box
+const uint32_t chanceOfPrecip = 0x0000FF;    // BLUE - x% colour (trigger dependant)
+const uint32_t hourlyDayColour = 0x000000;   // BLACK - hour of the day colour (5p, 6pm, etc)
+const uint32_t hourlyTempColour = 0x000000;  // BLACK - temp colour for the hour (temp dependant)
+
+const uint32_t clockColour = 0xFFFFFF;  // WHITE - clock text colour (top of TFT)
+
+static float maxDayTemp = 29.4f;             // high day temp trigger must be in celsius (85F)
+const uint32_t maxDayTempColour = 0xFF0000;  // RED
+static float minDayTemp = 5.00f;             // lowest day temp trigger in C (41F)
+const uint32_t minDayTempColor = 0x0000FF;   // BLUE (cold)
+
+static float maxHRTemp = 29.4f;              // trigger max hourly temp (C) 85F
+const uint32_t maxHRTempColour = 0xFF0000;   // RED
+const uint32_t scatteredColor = 0x89F069;    // light green (scattered showers) 40-59%
+const uint32_t numerousColour = 0xEBE96C;    // yellow (numerous showers/rain) 60-79%
+const uint32_t wideSpreadColour = 0xFF0000;  // RED its going to rain! 80+%
+
+float UVindex = 5.00f;  // current UV index that is used to create the UV graph
 
 LV_FONT_DECLARE(lv_font_montserrat_latin_12);
 LV_FONT_DECLARE(lv_font_montserrat_latin_14);
@@ -39,23 +71,23 @@ LV_FONT_DECLARE(lv_font_montserrat_latin_42);
 static Language current_language = LANG_EN;
 
 // Font selection based on language
-const lv_font_t* get_font_12() {
+const lv_font_t *get_font_12() {
   return &lv_font_montserrat_latin_12;
 }
 
-const lv_font_t* get_font_14() {
+const lv_font_t *get_font_14() {
   return &lv_font_montserrat_latin_14;
 }
 
-const lv_font_t* get_font_16() {
+const lv_font_t *get_font_16() {
   return &lv_font_montserrat_latin_16;
 }
 
-const lv_font_t* get_font_20() {
+const lv_font_t *get_font_20() {
   return &lv_font_montserrat_latin_20;
 }
 
-const lv_font_t* get_font_42() {
+const lv_font_t *get_font_42() {
   return &lv_font_montserrat_latin_42;
 }
 
@@ -66,14 +98,14 @@ int x, y, z;
 
 // Preferences
 static Preferences prefs;
-static bool use_fahrenheit = false;
-static bool use_24_hour = false; 
+static bool use_fahrenheit = true;
+static bool use_24_hour = false;
 static bool use_night_mode = false;
 static char latitude[16] = LATITUDE_DEFAULT;
 static char longitude[16] = LONGITUDE_DEFAULT;
 static String location = String(LOCATION_DEFAULT);
 static char dd_opts[512];
-static DynamicJsonDocument geoDoc(8 * 1024);
+static JsonDocument geoDoc;
 static JsonArray geoResults;
 
 // Screen dimming variables
@@ -181,6 +213,13 @@ void deactivate_night_mode();
 void check_for_night_mode();
 void handle_temp_screen_wakeup_timeout(lv_timer_t *timer);
 
+//wifi signal strength plus current UVindex
+static void drawWiFiQuality();                 // draw the graph top right of display
+static int8_t getWifiQuality();                // gets the WIFI signal strength
+static void drawUVindex();                     // draws the UVindex currently
+static volatile bool time_to_draw_uv = false;  // this draws the WIFI and UV graphs
+
+TFT_eSPI tft = TFT_eSPI();
 
 int day_of_week(int y, int m, int d) {
   static const int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
@@ -189,8 +228,8 @@ int day_of_week(int y, int m, int d) {
 }
 
 String hour_of_day(int hour) {
-  const LocalizedStrings* strings = get_strings(current_language);
-  if(hour < 0 || hour > 23) return String(strings->invalid_hour);
+  const LocalizedStrings *strings = get_strings(current_language);
+  if (hour < 0 || hour > 23) return String(strings->invalid_hour);
 
   if (use_24_hour) {
     if (hour < 10)
@@ -198,8 +237,8 @@ String hour_of_day(int hour) {
     else
       return String(hour);
   } else {
-    if(hour == 0)   return String("12") + strings->am;
-    if(hour == 12)  return String(strings->noon);
+    if (hour == 0) return String("12") + strings->am;
+    if (hour == 12) return String(strings->noon);
 
     bool isMorning = (hour < 12);
     String suffix = isMorning ? strings->am : strings->pm;
@@ -234,17 +273,27 @@ static void update_clock(lv_timer_t *timer) {
 
   if (!getLocalTime(&timeinfo)) return;
 
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   char buf[16];
   if (use_24_hour) {
     snprintf(buf, sizeof(buf), "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
   } else {
     int hour = timeinfo.tm_hour % 12;
-    if(hour == 0) hour = 12;
+    if (hour == 0) hour = 12;
     const char *ampm = (timeinfo.tm_hour < 12) ? strings->am : strings->pm;
     snprintf(buf, sizeof(buf), "%d:%02d%s", hour, timeinfo.tm_min, ampm);
   }
   lv_label_set_text(lbl_clock, buf);
+
+  if (time_to_draw_uv) {  // if the UI refreshes, update my graphs
+    drawWiFiQuality();
+    drawUVindex();
+    time_to_draw_uv = false;  // set a flag so we don't do it every second
+  } else {
+    if (timeinfo.tm_sec == 15) {  // otherwise with no UI update, check once a minute
+      drawWiFiQuality();          // go update the wifi strength graphic
+    }
+  }
 }
 
 static void ta_event_cb(lv_event_t *e) {
@@ -285,19 +334,19 @@ void touchscreen_read(lv_indev_t *indev, lv_indev_data_t *data) {
     if (night_mode_active) {
       // Temporarily wake the screen for 15 seconds
       analogWrite(LCD_BACKLIGHT_PIN, prefs.getUInt("brightness", 128));
-    
+
       if (temp_screen_wakeup_timer) {
         lv_timer_del(temp_screen_wakeup_timer);
       }
       temp_screen_wakeup_timer = lv_timer_create(handle_temp_screen_wakeup_timeout, 15000, NULL);
-      lv_timer_set_repeat_count(temp_screen_wakeup_timer, 1); // Run only once
+      lv_timer_set_repeat_count(temp_screen_wakeup_timer, 1);  // Run only once
       Serial.println("Woke up screen. Setting timer to turn of screen after 15 seconds of inactivity.");
 
       if (!temp_screen_wakeup_active) {
-          // If this is the wake-up tap, don't pass this touch to the UI - just undim the screen
-          temp_screen_wakeup_active = true;
-          data->state = LV_INDEV_STATE_RELEASED;
-          return;
+        // If this is the wake-up tap, don't pass this touch to the UI - just undim the screen
+        temp_screen_wakeup_active = true;
+        data->state = LV_INDEV_STATE_RELEASED;
+        return;
       }
 
       temp_screen_wakeup_active = true;
@@ -315,7 +364,7 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  TFT_eSPI tft = TFT_eSPI();
+  //TFT_eSPI tft = TFT_eSPI();
   tft.init();
   pinMode(LCD_BACKLIGHT_PIN, OUTPUT);
 
@@ -330,6 +379,14 @@ void setup() {
   lv_indev_t *indev = lv_indev_create();
   lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
   lv_indev_set_read_cb(indev, touchscreen_read);
+
+  lv_display_add_event_cb(
+    disp, [](lv_event_t *e) {
+      if (lv_event_get_code(e) == LV_EVENT_RENDER_READY) {
+        time_to_draw_uv = true;
+      }
+    },
+    LV_EVENT_RENDER_READY, NULL);
 
   // Load saved prefs
   prefs.begin("weather", false);
@@ -379,6 +436,12 @@ void loop() {
     last = millis();
   }
 
+  if (time_to_draw_uv) {  //
+    drawWiFiQuality();
+    drawUVindex();
+    time_to_draw_uv = false;
+  }
+
   lv_tick_inc(5);
   delay(5);
 }
@@ -391,7 +454,7 @@ void wifi_splash_screen() {
   lv_obj_set_style_bg_grad_dir(scr, LV_GRAD_DIR_VER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   lv_obj_t *lbl = lv_label_create(scr);
   lv_label_set_text(lbl, strings->wifi_config);
   lv_obj_set_style_text_font(lbl, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -402,8 +465,8 @@ void wifi_splash_screen() {
 
 void create_ui() {
   lv_obj_t *scr = lv_scr_act();
-  lv_obj_set_style_bg_color(scr, lv_color_hex(0x4c8cb9), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_bg_grad_color(scr, lv_color_hex(0xa6cdec), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(scr, lv_color_hex(BGcolour), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_grad_color(scr, lv_color_hex(topGradientColour), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_grad_dir(scr, LV_GRAD_DIR_VER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
 
@@ -416,10 +479,10 @@ void create_ui() {
 
   static lv_style_t default_label_style;
   lv_style_init(&default_label_style);
-  lv_style_set_text_color(&default_label_style, lv_color_hex(0xFFFFFF));
+  lv_style_set_text_color(&default_label_style, lv_color_hex(bigTempNumber));  // big temp number
   lv_style_set_text_opa(&default_label_style, LV_OPA_COVER);
 
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
 
   lbl_today_temp = lv_label_create(scr);
   lv_label_set_text(lbl_today_temp, strings->temp_placeholder);
@@ -430,19 +493,19 @@ void create_ui() {
   lbl_today_feels_like = lv_label_create(scr);
   lv_label_set_text(lbl_today_feels_like, strings->feels_like_temp);
   lv_obj_set_style_text_font(lbl_today_feels_like, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(lbl_today_feels_like, lv_color_hex(0xe4ffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(lbl_today_feels_like, lv_color_hex(feelsLike), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_align(lbl_today_feels_like, LV_ALIGN_TOP_MID, 45, 75);
 
   lbl_forecast = lv_label_create(scr);
   lv_label_set_text(lbl_forecast, strings->seven_day_forecast);
   lv_obj_set_style_text_font(lbl_forecast, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(lbl_forecast, lv_color_hex(0xe4ffff), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(lbl_forecast, lv_color_hex(sevenDayForecast), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_align(lbl_forecast, LV_ALIGN_TOP_LEFT, 20, 110);
 
   box_daily = lv_obj_create(scr);
   lv_obj_set_size(box_daily, 220, 180);
   lv_obj_align(box_daily, LV_ALIGN_TOP_LEFT, 10, 135);
-  lv_obj_set_style_bg_color(box_daily, lv_color_hex(0x5e9bc8), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(box_daily, lv_color_hex(bigBoxBackGnd), LV_PART_MAIN | LV_STATE_DEFAULT);  // big box colour
   lv_obj_set_style_bg_opa(box_daily, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(box_daily, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_width(box_daily, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -459,15 +522,17 @@ void create_ui() {
     img_daily[i] = lv_img_create(box_daily);
 
     lv_obj_add_style(lbl_daily_day[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(lbl_daily_day[i], lv_color_hex(dayNameColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_day[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_daily_day[i], LV_ALIGN_TOP_LEFT, 2, i * 24);
 
     lv_obj_add_style(lbl_daily_high[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
+    //lv_obj_set_style_text_color(lbl_daily_high[i], lv_color_hex(dayHighColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_high[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_daily_high[i], LV_ALIGN_TOP_RIGHT, 0, i * 24);
 
     lv_label_set_text(lbl_daily_low[i], "");
-    lv_obj_set_style_text_color(lbl_daily_low[i], lv_color_hex(0xb9ecff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    //lv_obj_set_style_text_color(lbl_daily_low[i], lv_color_hex(dailyLowColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_low[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_daily_low[i], LV_ALIGN_TOP_RIGHT, -50, i * 24);
 
@@ -478,7 +543,7 @@ void create_ui() {
   box_hourly = lv_obj_create(scr);
   lv_obj_set_size(box_hourly, 220, 180);
   lv_obj_align(box_hourly, LV_ALIGN_TOP_LEFT, 10, 135);
-  lv_obj_set_style_bg_color(box_hourly, lv_color_hex(0x5e9bc8), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_bg_color(box_hourly, lv_color_hex(hourlyBoxColour), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_opa(box_hourly, LV_OPA_COVER, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_radius(box_hourly, 4, LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_border_width(box_hourly, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -495,15 +560,17 @@ void create_ui() {
     img_hourly[i] = lv_img_create(box_hourly);
 
     lv_obj_add_style(lbl_hourly[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(lbl_hourly[i], lv_color_hex(hourlyDayColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_hourly[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_hourly[i], LV_ALIGN_TOP_LEFT, 2, i * 24);
 
     lv_obj_add_style(lbl_hourly_temp[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
+    //lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(hourlyTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_hourly_temp[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_hourly_temp[i], LV_ALIGN_TOP_RIGHT, 0, i * 24);
 
     lv_label_set_text(lbl_precipitation_probability[i], "");
-    lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(0xb9ecff), LV_PART_MAIN | LV_STATE_DEFAULT);
+    //lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(chanceOfPrecip), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_precipitation_probability[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_align(lbl_precipitation_probability[i], LV_ALIGN_TOP_RIGHT, -55, i * 24);
 
@@ -516,9 +583,10 @@ void create_ui() {
   // Create clock label in the top-right corner
   lbl_clock = lv_label_create(scr);
   lv_obj_set_style_text_font(lbl_clock, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
-  lv_obj_set_style_text_color(lbl_clock, lv_color_hex(0xb9ecff), LV_PART_MAIN | LV_STATE_DEFAULT);
+  lv_obj_set_style_text_color(lbl_clock, lv_color_hex(clockColour), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_label_set_text(lbl_clock, "");
-  lv_obj_align(lbl_clock, LV_ALIGN_TOP_RIGHT, -10, 2);
+  //lv_obj_align(lbl_clock, LV_ALIGN_TOP_RIGHT, -10, 2);
+  lv_obj_align(lbl_clock, LV_ALIGN_CENTER, 40, -150);
 }
 
 void populate_results_dropdown() {
@@ -587,14 +655,14 @@ void screen_event_cb(lv_event_t *e) {
 }
 
 void daily_cb(lv_event_t *e) {
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   lv_obj_add_flag(box_daily, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(lbl_forecast, strings->hourly_forecast);
   lv_obj_clear_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
 }
 
 void hourly_cb(lv_event_t *e) {
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   lv_obj_add_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
   lv_label_set_text(lbl_forecast, strings->seven_day_forecast);
   lv_obj_clear_flag(box_daily, LV_OBJ_FLAG_HIDDEN);
@@ -602,7 +670,7 @@ void hourly_cb(lv_event_t *e) {
 
 
 static void reset_wifi_event_handler(lv_event_t *e) {
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   lv_obj_t *mbox = lv_msgbox_create(lv_scr_act());
   lv_obj_t *title = lv_msgbox_add_title(mbox, strings->reset);
   lv_obj_set_style_margin_left(title, 10, 0);
@@ -626,7 +694,7 @@ static void reset_wifi_event_handler(lv_event_t *e) {
 
   lv_obj_set_style_border_width(mbox, 2, LV_PART_MAIN);
   lv_obj_set_style_border_color(mbox, lv_color_black(), LV_PART_MAIN);
-  lv_obj_set_style_border_opa(mbox, LV_OPA_COVER,   LV_PART_MAIN);
+  lv_obj_set_style_border_opa(mbox, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_radius(mbox, 4, LV_PART_MAIN);
 
   lv_obj_add_event_cb(btn_yes, reset_confirm_yes_cb, LV_EVENT_CLICKED, mbox);
@@ -654,7 +722,7 @@ static void change_location_event_cb(lv_event_t *e) {
 }
 
 void create_location_dialog() {
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   location_win = lv_win_create(lv_scr_act());
   lv_obj_t *title = lv_win_add_title(location_win, strings->change_location);
   lv_obj_t *header = lv_win_get_header(location_win);
@@ -728,7 +796,7 @@ void create_settings_window() {
 
   int vertical_element_spacing = 21;
 
-  const LocalizedStrings* strings = get_strings(current_language);
+  const LocalizedStrings *strings = get_strings(current_language);
   settings_win = lv_win_create(lv_scr_act());
 
   lv_obj_t *header = lv_win_get_header(settings_win);
@@ -755,12 +823,14 @@ void create_settings_window() {
   lv_obj_set_width(slider, 100);
   lv_obj_align_to(slider, lbl_b, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
 
-  lv_obj_add_event_cb(slider, [](lv_event_t *e){
-    lv_obj_t *s = (lv_obj_t*)lv_event_get_target(e);
-    uint32_t v = lv_slider_get_value(s);
-    analogWrite(LCD_BACKLIGHT_PIN, v);
-    prefs.putUInt("brightness", v);
-  }, LV_EVENT_VALUE_CHANGED, NULL);
+  lv_obj_add_event_cb(
+    slider, [](lv_event_t *e) {
+      lv_obj_t *s = (lv_obj_t *)lv_event_get_target(e);
+      uint32_t v = lv_slider_get_value(s);
+      analogWrite(LCD_BACKLIGHT_PIN, v);
+      prefs.putUInt("brightness", v);
+    },
+    LV_EVENT_VALUE_CHANGED, NULL);
 
   // 'Night mode' switch
   lv_obj_t *lbl_night_mode = lv_label_create(cont);
@@ -904,7 +974,7 @@ static void settings_event_handler(lv_event_t *e) {
     // Update the UI immediately to reflect language change
     lv_obj_del(settings_win);
     settings_win = nullptr;
-    
+
     // Save preferences and recreate UI with new language
     prefs.putBool("useFahrenheit", use_fahrenheit);
     prefs.putBool("use24Hour", use_24_hour);
@@ -913,7 +983,7 @@ static void settings_event_handler(lv_event_t *e) {
 
     lv_keyboard_set_textarea(kb, nullptr);
     lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-    
+
     // Recreate the main UI with the new language
     lv_obj_clean(lv_scr_act());
     create_ui();
@@ -943,7 +1013,7 @@ bool night_mode_should_be_active() {
   if (!getLocalTime(&timeinfo)) return false;
 
   if (!use_night_mode) return false;
-  
+
   int hour = timeinfo.tm_hour;
   return (hour >= NIGHT_MODE_START_HOUR || hour < NIGHT_MODE_END_HOUR);
 }
@@ -976,7 +1046,7 @@ void handle_temp_screen_wakeup_timeout(lv_timer_t *timer) {
       activate_night_mode();
     }
   }
-  
+
   if (temp_screen_wakeup_timer) {
     lv_timer_del(temp_screen_wakeup_timer);
     temp_screen_wakeup_timer = nullptr;
@@ -996,10 +1066,10 @@ void do_geocode_query(const char *q) {
       geoResults = geoDoc["results"].as<JsonArray>();
       populate_results_dropdown();
     } else {
-        Serial.println("Failed to parse search response from open-meteo: " + url);
+      Serial.println("Failed to parse search response from open-meteo: " + url);
     }
   } else {
-      Serial.println("Failed location search at open-meteo: " + url);
+    Serial.println("Failed location search at open-meteo: " + url);
   }
   http.end();
 }
@@ -1008,22 +1078,21 @@ void fetch_and_update_weather() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi no longer connected. Attempting to reconnect...");
     WiFi.disconnect();
-    WiFiManager wm;  
+    WiFiManager wm;
     wm.autoConnect(DEFAULT_CAPTIVE_SSID);
-    delay(1000);  
-    if (WiFi.status() != WL_CONNECTED) { 
+    delay(1000);
+    if (WiFi.status() != WL_CONNECTED) {
       Serial.println("WiFi connection still unavailable.");
-      return;   
+      return;
     }
     Serial.println("WiFi connection reestablished.");
   }
 
-
   String url = String("http://api.open-meteo.com/v1/forecast?latitude=")
                + latitude + "&longitude=" + longitude
-               + "&current=temperature_2m,apparent_temperature,is_day,weather_code"
+               + "&current=temperature_2m,apparent_temperature,is_day,weather_code,uv_index"
                + "&daily=temperature_2m_min,temperature_2m_max,weather_code"
-               + "&hourly=temperature_2m,precipitation_probability,is_day,weather_code"
+               + "&hourly=precipitation_probability,temperature_2m,is_day,weather_code"
                + "&forecast_hours=7"
                + "&timezone=auto";
 
@@ -1034,19 +1103,20 @@ void fetch_and_update_weather() {
     Serial.println("Updated weather from open-meteo: " + url);
 
     String payload = http.getString();
-    DynamicJsonDocument doc(32 * 1024);
+    JsonDocument doc;
 
     if (deserializeJson(doc, payload) == DeserializationError::Ok) {
       float t_now = doc["current"]["temperature_2m"].as<float>();
       float t_ap = doc["current"]["apparent_temperature"].as<float>();
       int code_now = doc["current"]["weather_code"].as<int>();
       int is_day = doc["current"]["is_day"].as<int>();
+      UVindex = doc["current"]["uv_index"].as<float>();  // grab the current UV index
 
       if (use_fahrenheit) {
         t_now = t_now * 9.0 / 5.0 + 32.0;
         t_ap = t_ap * 9.0 / 5.0 + 32.0;
       }
-      const LocalizedStrings* strings = get_strings(current_language);
+      const LocalizedStrings *strings = get_strings(current_language);
 
       int utc_offset_seconds = doc["utc_offset_seconds"].as<int>();
       configTime(utc_offset_seconds, 0, "pool.ntp.org", "time.nist.gov");
@@ -1073,13 +1143,31 @@ void fetch_and_update_weather() {
 
         float mn = tmin[i].as<float>();
         float mx = tmax[i].as<float>();
+        float maxDT, minDT;
         if (use_fahrenheit) {
           mn = mn * 9.0 / 5.0 + 32.0;
           mx = mx * 9.0 / 5.0 + 32.0;
+          maxDT = maxDayTemp * 9.0 / 5.0 + 32.0;
+          minDT = minDayTemp * 9.0 / 5.0 + 32.0;
+        } else {
+          maxDT = maxDayTemp;  // just use the default without conversion
+          minDT = minDayTemp;  // just use defaults, no conversion
         }
 
         lv_label_set_text_fmt(lbl_daily_day[i], "%s", dayStr);
         lv_label_set_text_fmt(lbl_daily_high[i], "%.0f°%c", mx, unit);
+
+        // Colour the high/low temp based on thresholds
+        if (mx >= maxDT) {
+          lv_obj_set_style_text_color(lbl_daily_high[i], lv_color_hex(maxDayTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+        } else {
+          lv_obj_set_style_text_color(lbl_daily_high[i], lv_color_hex(dayHighColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        if (mn <= minDT) {
+          lv_obj_set_style_text_color(lbl_daily_low[i], lv_color_hex(minDayTempColor), LV_PART_MAIN | LV_STATE_DEFAULT);
+        } else {
+          lv_obj_set_style_text_color(lbl_daily_low[i], lv_color_hex(dailyLowColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
         lv_label_set_text_fmt(lbl_daily_low[i], "%.0f°%c", mn, unit);
         lv_img_set_src(img_daily[i], choose_icon(weather_codes[i].as<int>(), (i == 0) ? is_day : 1));
       }
@@ -1098,8 +1186,12 @@ void fetch_and_update_weather() {
 
         float precipitation_probability = precipitation_probabilities[i].as<float>();
         float temp = hourly_temps[i].as<float>();
+        float maxHRT;
         if (use_fahrenheit) {
           temp = temp * 9.0 / 5.0 + 32.0;
+          maxHRT = maxHRTemp * 9.0 / 5.0 + 32.0;  // convert to F
+        } else {
+          maxHRT = maxHRTemp;  // otherwise it's C now, use it
         }
 
         if (i == 0 && current_language != LANG_FR) {
@@ -1107,12 +1199,31 @@ void fetch_and_update_weather() {
         } else {
           lv_label_set_text(lbl_hourly[i], hour_name.c_str());
         }
+        if (temp >= maxHRT) {
+          lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(maxHRTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+        } else {
+          lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(hourlyTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+
+        // sets the colours for the percentage of precipiation
+        if (precipitation_probability >= 40.0 && precipitation_probability < 60.0) {
+          lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(scatteredColor), LV_PART_MAIN | LV_STATE_DEFAULT);
+        } else {
+          if (precipitation_probability >= 60.0 && precipitation_probability < 80.0) {
+            lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(numerousColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+          } else {
+            if (precipitation_probability >= 80.0) {
+              lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(wideSpreadColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+            } else {
+              lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(chanceOfPrecip), LV_PART_MAIN | LV_STATE_DEFAULT);
+            }
+          }
+        }
+
         lv_label_set_text_fmt(lbl_precipitation_probability[i], "%.0f%%", precipitation_probability);
         lv_label_set_text_fmt(lbl_hourly_temp[i], "%.0f°%c", temp, unit);
         lv_img_set_src(img_hourly[i], choose_icon(hourly_weather_codes[i].as<int>(), hourly_is_day[i].as<int>()));
       }
-
-
     } else {
       Serial.println("JSON parse failed on result from " + url);
     }
@@ -1122,28 +1233,28 @@ void fetch_and_update_weather() {
   http.end();
 }
 
-const lv_img_dsc_t* choose_image(int code, int is_day) {
+const lv_img_dsc_t *choose_image(int code, int is_day) {
   switch (code) {
     // Clear sky
-    case  0:
+    case 0:
       return is_day
-        ? &image_sunny
-        : &image_clear_night;
+               ? &image_sunny
+               : &image_clear_night;
 
     // Mainly clear
-    case  1:
+    case 1:
       return is_day
-        ? &image_mostly_sunny
-        : &image_mostly_clear_night;
+               ? &image_mostly_sunny
+               : &image_mostly_clear_night;
 
     // Partly cloudy
-    case  2:
+    case 2:
       return is_day
-        ? &image_partly_cloudy
-        : &image_partly_cloudy_night;
+               ? &image_partly_cloudy
+               : &image_partly_cloudy_night;
 
     // Overcast
-    case  3:
+    case 3:
       return &image_cloudy;
 
     // Fog / mist
@@ -1165,8 +1276,8 @@ const lv_img_dsc_t* choose_image(int code, int is_day) {
     // Rain: slight showers
     case 61:
       return is_day
-        ? &image_scattered_showers_day
-        : &image_scattered_showers_night;
+               ? &image_scattered_showers_day
+               : &image_scattered_showers_night;
 
     // Rain: moderate
     case 63:
@@ -1196,8 +1307,8 @@ const lv_img_dsc_t* choose_image(int code, int is_day) {
     case 80:
     case 81:
       return is_day
-        ? &image_scattered_showers_day
-        : &image_scattered_showers_night;
+               ? &image_scattered_showers_day
+               : &image_scattered_showers_night;
 
     // Rain showers: violent
     case 82:
@@ -1210,8 +1321,8 @@ const lv_img_dsc_t* choose_image(int code, int is_day) {
     // Thunderstorm (light)
     case 95:
       return is_day
-        ? &image_isolated_scattered_tstorms_day
-        : &image_isolated_scattered_tstorms_night;
+               ? &image_isolated_scattered_tstorms_day
+               : &image_isolated_scattered_tstorms_night;
 
     // Thunderstorm with hail
     case 96:
@@ -1221,33 +1332,33 @@ const lv_img_dsc_t* choose_image(int code, int is_day) {
     // Fallback for any other code
     default:
       return is_day
-        ? &image_mostly_cloudy_day
-        : &image_mostly_cloudy_night;
+               ? &image_mostly_cloudy_day
+               : &image_mostly_cloudy_night;
   }
 }
 
-const lv_img_dsc_t* choose_icon(int code, int is_day) {
+const lv_img_dsc_t *choose_icon(int code, int is_day) {
   switch (code) {
     // Clear sky
-    case  0:
+    case 0:
       return is_day
-        ? &icon_sunny
-        : &icon_clear_night;
+               ? &icon_sunny
+               : &icon_clear_night;
 
     // Mainly clear
-    case  1:
+    case 1:
       return is_day
-        ? &icon_mostly_sunny
-        : &icon_mostly_clear_night;
+               ? &icon_mostly_sunny
+               : &icon_mostly_clear_night;
 
     // Partly cloudy
-    case  2:
+    case 2:
       return is_day
-        ? &icon_partly_cloudy
-        : &icon_partly_cloudy_night;
+               ? &icon_partly_cloudy
+               : &icon_partly_cloudy_night;
 
     // Overcast
-    case  3:
+    case 3:
       return &icon_cloudy;
 
     // Fog / mist
@@ -1269,8 +1380,8 @@ const lv_img_dsc_t* choose_icon(int code, int is_day) {
     // Rain: slight showers
     case 61:
       return is_day
-        ? &icon_scattered_showers_day
-        : &icon_scattered_showers_night;
+               ? &icon_scattered_showers_day
+               : &icon_scattered_showers_night;
 
     // Rain: moderate
     case 63:
@@ -1300,8 +1411,8 @@ const lv_img_dsc_t* choose_icon(int code, int is_day) {
     case 80:
     case 81:
       return is_day
-        ? &icon_scattered_showers_day
-        : &icon_scattered_showers_night;
+               ? &icon_scattered_showers_day
+               : &icon_scattered_showers_night;
 
     // Rain showers: violent
     case 82:
@@ -1314,8 +1425,8 @@ const lv_img_dsc_t* choose_icon(int code, int is_day) {
     // Thunderstorm (light)
     case 95:
       return is_day
-        ? &icon_isolated_scattered_tstorms_day
-        : &icon_isolated_scattered_tstorms_night;
+               ? &icon_isolated_scattered_tstorms_day
+               : &icon_isolated_scattered_tstorms_night;
 
     // Thunderstorm with hail
     case 96:
@@ -1325,7 +1436,118 @@ const lv_img_dsc_t* choose_icon(int code, int is_day) {
     // Fallback for any other code
     default:
       return is_day
-        ? &icon_mostly_cloudy_day
-        : &icon_mostly_cloudy_night;
+               ? &icon_mostly_cloudy_day
+               : &icon_mostly_cloudy_night;
+  }
+}
+
+// -------- WIFI Signal Strength ---------
+//
+static void drawWiFiQuality() {
+  const byte numBars = 5;                          // set the number of total bars to display
+  const byte barWidth = 3;                         // set bar width, height in pixels
+  const byte barHeight = 20;                       // should be multiple of numBars, or to indicate zero value
+  const byte barSpace = 1;                         // set number of pixels between bars
+  const uint16_t barXPosBase = SCREEN_WIDTH - 22;  // set the baseline X-pos for drawing the bars
+  const byte barYPosBase = 22;                     // set the baseline Y-pos for drawing the bars
+  const uint16_t barColor = TFT_YELLOW;
+  const uint16_t barBackColor = TFT_DARKGREY;
+
+  int8_t quality = getWifiQuality();
+
+  for (int8_t i = 0; i < numBars; i++) {  // current bar loop
+    byte barSpacer = i * barSpace;
+    byte tempBarHeight = (barHeight / numBars) * (i + 1);
+    for (int8_t j = 0; j < tempBarHeight; j++) {  // draw bar height loop
+      for (byte ii = 0; ii < barWidth; ii++) {    // draw bar width loop
+        byte nextBarThreshold = (i + 1) * (100 / numBars);
+        byte currentBarThreshold = i * (100 / numBars);
+        byte currentBarIncrements = (barHeight / numBars) * (i + 1);
+        float rangePerBar = (100 / numBars);
+        float currentBarStrength;
+        if ((quality > currentBarThreshold) && (quality < nextBarThreshold)) {
+          currentBarStrength = ((quality - currentBarThreshold) / rangePerBar) * currentBarIncrements;
+        } else if (quality >= nextBarThreshold) {
+          currentBarStrength = currentBarIncrements;
+        } else {
+          currentBarStrength = 0;
+        }
+        if (j < currentBarStrength) {
+          tft.drawPixel((barXPosBase + barSpacer + ii) + (barWidth * i), barYPosBase - j, barColor);
+        } else {
+          tft.drawPixel((barXPosBase + barSpacer + ii) + (barWidth * i), barYPosBase - j, barBackColor);
+        }
+      }
+    }
+  }
+}
+
+// converts the dBm to a range between 0 and 100%
+static int8_t getWifiQuality() {
+  int32_t dbm = WiFi.RSSI();
+  if (dbm <= -100) {
+    return 0;
+  } else if (dbm >= -50) {
+    return 100;
+  } else {
+    return 2 * (dbm + 100);
+  }
+}
+
+static void drawUVindex() {
+  int x, y, xpos, ypos, uvMax, temp;  // used for drawing the UVindex
+  uint16_t theColour;
+  theColour = TFT_GREEN;
+  uvMax = (UVindex + .5);  // the number of squares to draw (0 to ##)
+  //  uvMax = 9;// we only draw 0 to 9 which translates to 0 to 11...
+  xpos = 178;                // where the graph starts from
+  ypos = 113;                // x and y
+  if (uvMax > 9) uvMax = 9;  // maximum boxes to draw (10)
+  for (temp = 0; temp <= 9; temp++) {
+    x = xpos + (temp * 6);  // this is where to start the X point for the UV
+    y = ypos - (temp * 2);  // where the Y point start is
+    if (temp <= uvMax) {    // we change colours to the max of the UVindex
+      switch (temp) {
+        case 0:
+          theColour = TFT_GREEN;
+          break;
+        case 1:
+          theColour = TFT_GREEN;
+          break;
+        case 2:
+          theColour = TFT_GREEN;
+          break;
+        case 3:
+          theColour = TFT_YELLOW;
+          break;
+        case 4:
+          theColour = TFT_YELLOW;
+          break;
+        case 5:
+          theColour = TFT_YELLOW;
+          break;
+        case 6:
+          theColour = TFT_ORANGE;
+          break;
+        case 7:
+          theColour = TFT_ORANGE;
+          break;
+        case 8:
+          theColour = TFT_RED;
+          break;
+        case 9:
+          theColour = TFT_RED;
+          break;
+        case 10:
+          theColour = TFT_RED;
+          break;
+        default:
+          theColour = TFT_DARKGREY;
+          break;
+      }
+    } else {
+      theColour = TFT_DARKGREY;
+    }
+    tft.fillRect(x, y, 4, 8 + (temp * 2), theColour);  // width, height
   }
 }
