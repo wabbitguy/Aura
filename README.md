@@ -18,13 +18,13 @@ New features were added and some of the original UI code was modified to make us
     
 <b><i>All user adjustable settings documentmented lines in 33-69</i></b>
 
-Sample display images using existing defaults (not the best photos).
+Sample display images using existing defaults:
 
 Weekly display:
-<img width="278" height="400" alt="MAIN" src="https://github.com/user-attachments/assets/5e711e1b-8b1e-4fdb-89bf-330e34f2a137" />
+<img width="184" height="240" alt="Face_View" src="https://github.com/user-attachments/assets/784e6f03-238c-4fc2-91af-f8b107a532ce" />
 
 Hourly display:
-<img width="284" height="400" alt="HOURLY" src="https://github.com/user-attachments/assets/faa5e8ff-018f-4f09-aec6-ea85eb9236d4" />
+<img width="181" height="240" alt="Hourly_View" src="https://github.com/user-attachments/assets/b8969d1e-7b19-4f5c-8d80-1356cbd69b63" />
 
 -----
 Aura is a simple weather widget that runs on ESP32-2432S028R ILI9341 devices with a 2.8" screen. These devices are sometimes called a "CYD" or Cheap Yellow Display.
