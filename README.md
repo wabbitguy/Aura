@@ -6,7 +6,7 @@ New features were added and some of the original UI code was modified to make us
 
 ### New Features
 
-1. JSON has been updated to the fixed auto adjust buffers for weather data
+1. JSON has been updated to auto adjust buffers for weather data
 2. Colours are now super easy to adjust in the firmware.
 3. Update timer was lengthened to 15 minutes (Open-Meteo only updates hourly)
 4. Added WiFi signal strength indicator top right corner of TFT
@@ -15,6 +15,7 @@ New features were added and some of the original UI code was modified to make us
 7. Hourly temp has trigger for low/high with specific colours
 8. Hourly POP% has trigger points/colours to cover range from 40% to 80%+
 9. All user adjustable settings documentmented lines 33-69
+10. TFT_eSPI folder contains the User_Setup. for ILI9431, and for ST7789 (remove the _ST7789 to use)
 
 -----
 Aura is a simple weather widget that runs on ESP32-2432S028R ILI9341 devices with a 2.8" screen. These devices are sometimes called a "CYD" or Cheap Yellow Display.
