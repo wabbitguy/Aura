@@ -1,5 +1,22 @@
 # Aura
 
+The modifications are all based off the original Aura that can be found at https://github.com/Surrey-Homeware/Aura
+
+New features were added and some of the original UI code was modified to make user colour selection easier.
+
+### New Features
+
+1. JSON has been updated to the fixed auto adjust buffers for weather data
+2. Colours are now super easy to adjust in the firmware.
+3. Update timer was lengthened to 15 minutes (Open-Meteo only updates hourly)
+4. Added WiFi signal strength indicator top right corner of TFT
+5. Added hourly UV graph above temerature box
+6. Weekday low/high now have trigger points and specific colours to match
+7. Hourly temp has trigger for low/high with specific colours
+8. Hourly POP% has trigger points/colours to cover range from 40% to 80%+
+9. All user adjustable settings documentmented lines 33-69
+
+-----
 Aura is a simple weather widget that runs on ESP32-2432S028R ILI9341 devices with a 2.8" screen. These devices are sometimes called a "CYD" or Cheap Yellow Display.
 
 This is just the source code for the project. This project includes a case design and assembly instructions. The complete instructions are available

@@ -20,9 +20,9 @@
 #define SCREEN_HEIGHT 320
 #define DRAW_BUF_SIZE (SCREEN_WIDTH * SCREEN_HEIGHT / 10 * (LV_COLOR_DEPTH / 8))
 
-#define LATITUDE_DEFAULT "51.5074"
-#define LONGITUDE_DEFAULT "-0.1278"
-#define LOCATION_DEFAULT "London"
+#define LATITUDE_DEFAULT "49.1245"
+#define LONGITUDE_DEFAULT "-122.7646"
+#define LOCATION_DEFAULT "Surrey, BC"
 #define DEFAULT_CAPTIVE_SSID "Aura"
 #define UPDATE_INTERVAL 900000UL  // 15 minutes because open-meteo updates itself every hour
 
@@ -30,18 +30,20 @@
 #define NIGHT_MODE_START_HOUR 22
 #define NIGHT_MODE_END_HOUR 6
 
-// custom colour defintions for the display
+// custom colour defintions for the display background
 const uint32_t bigTempNumber = 0xFFFFFF;      // WHITE - this is the big temp number on TFT
 const uint32_t feelsLike = 0xFFFFFF;          // WHITE - feels like text line
 const uint32_t BGcolour = 0x417A36;           // GREEN - background colour of the display
 const uint32_t topGradientColour = 0x00FF00;  // GREEN - Gradient colour at top (goes from dark to light)
 
+//colour settings for the default save day forecast display box items
 const uint32_t sevenDayForecast = 0xFFFFFF;  // WHITE - Saven Day forecast text line
 const uint32_t dayNameColour = 0xFFFFFF;     // WHITE - weekday names text colour
 const uint32_t dayHighColour = 0xFFFFFF;     // WHITE - default day highlight colour (temp dependant)
 const uint32_t bigBoxBackGnd = 0x000000;     // BLACK - the box surrounding the seven day info
 const uint32_t dailyLowColour = 0x69F0F0;    // LIGHT BLUE - day low temp colour (temp dependant)
 
+//colour settings for the default hourly display box items
 const uint32_t hourlyBoxColour = 0xFFFFFF;   // WHITE - colour box for HOURLY box
 const uint32_t chanceOfPrecip = 0x0000FF;    // BLUE - x% colour (trigger dependant)
 const uint32_t hourlyDayColour = 0x000000;   // BLACK - hour of the day colour (5p, 6pm, etc)
@@ -49,16 +51,22 @@ const uint32_t hourlyTempColour = 0x000000;  // BLACK - temp colour for the hour
 
 const uint32_t clockColour = 0xFFFFFF;  // WHITE - clock text colour (top of TFT)
 
+// settings for the main weekday trigger temp colours
 static float maxDayTemp = 29.4f;             // high day temp trigger must be in celsius (85F)
 const uint32_t maxDayTempColour = 0xFF0000;  // RED
-static float minDayTemp = 5.00f;             // lowest day temp trigger in C (41F)
+static float minDayTemp = 5.00f;             // lowest day temp trigger in (C) (41F)
 const uint32_t minDayTempColor = 0x0000FF;   // BLUE (cold)
 
-static float maxHRTemp = 29.4f;              // trigger max hourly temp (C) 85F
-const uint32_t maxHRTempColour = 0xFF0000;   // RED
+//settings for the hourly temp trigger colours
+static float maxHRTemp = 29.4f;             // trigger max hourly temp (C) 85F
+const uint32_t maxHRTempColour = 0xFF0000;  // RED
+static float minHRTemp = 5.00f;             // lowest temp hourly trigger point (C) 41F
+const uint32_t minHRTempColour = 0x0000FF;  // BLUE to show is COLD
+
+//settings for the POP% range point colours
 const uint32_t scatteredColor = 0x89F069;    // light green (scattered showers) 40-59%
 const uint32_t numerousColour = 0xEBE96C;    // yellow (numerous showers/rain) 60-79%
-const uint32_t wideSpreadColour = 0xFF0000;  // RED its going to rain! 80+%
+const uint32_t wideSpreadColour = 0xFF0000;  // RED its going to be wet! 80+%
 
 float UVindex = 5.00f;  // current UV index that is used to create the UV graph
 
@@ -1186,12 +1194,14 @@ void fetch_and_update_weather() {
 
         float precipitation_probability = precipitation_probabilities[i].as<float>();
         float temp = hourly_temps[i].as<float>();
-        float maxHRT;
+        float maxHRT, minHRT;
         if (use_fahrenheit) {
           temp = temp * 9.0 / 5.0 + 32.0;
           maxHRT = maxHRTemp * 9.0 / 5.0 + 32.0;  // convert to F
+          minHRT = minHRTemp * 9.0 / 5.0 + 32.0;  // convert to F
         } else {
           maxHRT = maxHRTemp;  // otherwise it's C now, use it
+          minHRT = minHRTemp;  // lowest hourly temp in C trigger
         }
 
         if (i == 0 && current_language != LANG_FR) {
@@ -1199,10 +1209,15 @@ void fetch_and_update_weather() {
         } else {
           lv_label_set_text(lbl_hourly[i], hour_name.c_str());
         }
+
         if (temp >= maxHRT) {
           lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(maxHRTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
         } else {
-          lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(hourlyTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+          if (temp <= minHRT) {
+            lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(minHRTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+          } else {
+            lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(hourlyTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
+          }
         }
 
         // sets the colours for the percentage of precipiation
