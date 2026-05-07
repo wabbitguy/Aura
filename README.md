@@ -14,8 +14,17 @@ New features were added and some of the original UI code was modified to make us
 6. Weekday low/high now have trigger points and specific colours to match
 7. Hourly temp has trigger for low/high with specific colours
 8. Hourly POP% has trigger points/colours to cover range from 40% to 80%+
-9. All user adjustable settings documentmented lines 33-69
-10. TFT_eSPI folder contains the User_Setup. for ILI9431, and for ST7789 (remove the _ST7789 to use)
+9. TFT_eSPI folder contains the User_Setup. for ILI9431, and for ST7789 (remove the _ST7789 to use)
+    
+<b><i>All user adjustable settings documentmented lines in 33-69</i></b>
+
+Sample display images using existing defaults (not the best photos).
+
+Weekly display:
+<img width="278" height="400" alt="MAIN" src="https://github.com/user-attachments/assets/5e711e1b-8b1e-4fdb-89bf-330e34f2a137" />
+
+Hourly display:
+<img width="284" height="400" alt="HOURLY" src="https://github.com/user-attachments/assets/faa5e8ff-018f-4f09-aec6-ea85eb9236d4" />
 
 -----
 Aura is a simple weather widget that runs on ESP32-2432S028R ILI9341 devices with a 2.8" screen. These devices are sometimes called a "CYD" or Cheap Yellow Display.
