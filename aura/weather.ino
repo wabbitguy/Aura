@@ -226,6 +226,7 @@ static void drawWiFiQuality();                 // draw the graph top right of di
 static int8_t getWifiQuality();                // gets the WIFI signal strength
 static void drawUVindex();                     // draws the UVindex currently
 static volatile bool time_to_draw_uv = false;  // this draws the WIFI and UV graphs
+bool inSettingsMode = false;                   // default to not in settings screen
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -446,8 +447,10 @@ void loop() {
 
   if (time_to_draw_uv) {  //
     drawWiFiQuality();
-    drawUVindex();
-    time_to_draw_uv = false;
+    if (inSettingsMode == false) {  // false is day/hr display, draw the UVindex
+      drawUVindex();                // draw it
+    }
+    time_to_draw_uv = false;  // reset the flag so we don't cycle forever
   }
 
   lv_tick_inc(5);
@@ -959,6 +962,8 @@ void create_settings_window() {
   lv_label_set_text(lbl_btn, strings->close);
   lv_obj_set_style_text_font(lbl_btn, get_font_12(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_center(lbl_btn);
+
+  inSettingsMode = true;  // stop drawing the UVIndex while not on the temperature display
 }
 
 static void settings_event_handler(lv_event_t *e) {
@@ -996,6 +1001,7 @@ static void settings_event_handler(lv_event_t *e) {
     lv_obj_clean(lv_scr_act());
     create_ui();
     fetch_and_update_weather();
+    inSettingsMode = false;  // we can draw the UV graph again
     return;
   }
 
@@ -1010,6 +1016,8 @@ static void settings_event_handler(lv_event_t *e) {
 
     lv_obj_del(settings_win);
     settings_win = nullptr;
+
+    inSettingsMode = false;  // we can draw the UV graph again
 
     fetch_and_update_weather();
   }
