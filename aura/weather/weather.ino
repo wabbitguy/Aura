@@ -227,8 +227,13 @@ static int8_t getWifiQuality();                // gets the WIFI signal strength
 static void drawUVindex();                     // draws the UVindex currently
 static volatile bool time_to_draw_uv = false;  // this draws the WIFI and UV graphs
 bool inSettingsMode = false;                   // default to not in settings screen
+bool urlSuccess = false;                       // will change the time to RED on a failed URL request
+bool graphInit = false;                        // draws the inital graphs, then goes to timer
+bool updateWIFI = false;                       // don't draw til I tell it
+static uint32_t lastWifiUpdate = 0;            // flag for graph updates
+static uint32_t updateGraphTimer = 30000;      // frequency of graph updates (30 seconds)
 
-TFT_eSPI tft = TFT_eSPI();
+TFT_eSPI tft = TFT_eSPI();  // init the display
 
 int day_of_week(int y, int m, int d) {
   static const int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
@@ -294,15 +299,18 @@ static void update_clock(lv_timer_t *timer) {
   }
   lv_label_set_text(lbl_clock, buf);
 
-  if (time_to_draw_uv) {  // if the UI refreshes, update my graphs
-    drawWiFiQuality();
-    drawUVindex();
-    time_to_draw_uv = false;  // set a flag so we don't do it every second
+  if (graphInit == false) {
+    updateWIFI = true;          // and go draw the wifi for me
+    lastWifiUpdate = millis();  // save for the next pass
   } else {
-    if (timeinfo.tm_sec == 15) {  // otherwise with no UI update, check once a minute
-      drawWiFiQuality();          // go update the wifi strength graphic
+    if (millis() - lastWifiUpdate >= updateGraphTimer) {  // time to update?
+      updateWIFI = true;
+      lastWifiUpdate = millis();
     }
   }
+  // if (timeinfo.tm_sec == 15) {  // update graphs every minute
+  //   updateWIFI = true;          // and go draw the wifi for me
+  // }
 }
 
 static void ta_event_cb(lv_event_t *e) {
@@ -436,6 +444,34 @@ void apModeCallback(WiFiManager *mgr) {
   flush_wifi_splashscreen();
 }
 
+void updateGraphs() {          // my routines to draw Wifi and UV
+  if (time_to_draw_uv) {       // it's going to hit this once a second
+    if (graphInit == false) {  // we've never shown it before
+      drawWiFiQuality();       // show both graphs
+      drawUVindex();           // draw it
+      graphInit = true;        // we only do this from boot or return from settings change
+      // Serial.println("DID ONCE");
+    } else {  // they are visible so only update once a minute
+      if (updateWIFI) {
+        // Serial.println("WIFI UPDATE");
+        drawWiFiQuality();              // show signal strength
+        if (inSettingsMode == false) {  // false is day/hr display, draw the UVindex
+          drawUVindex();                // draw it
+          // Serial.println("UV Update");
+          if (urlSuccess) {  // did we manage a URL GET success?
+            // Serial.println("Got Open Meteo");
+            tft.fillCircle(10, 10, 3, TFT_GREEN);  // green means GET worked
+          } else {                                 // failed the URL
+            tft.fillCircle(10, 10, 3, TFT_RED);    // RED means it failed!
+          }
+        }
+        updateWIFI = false;  // reset flag for another minute
+      }
+    }
+    time_to_draw_uv = false;  // reset the flag so we don't cycle forever
+  }
+}
+
 void loop() {
   lv_timer_handler();
   static uint32_t last = millis();
@@ -445,13 +481,7 @@ void loop() {
     last = millis();
   }
 
-  if (time_to_draw_uv) {  //
-    drawWiFiQuality();
-    if (inSettingsMode == false) {  // false is day/hr display, draw the UVindex
-      drawUVindex();                // draw it
-    }
-    time_to_draw_uv = false;  // reset the flag so we don't cycle forever
-  }
+  updateGraphs();  // update the WIFI and UV
 
   lv_tick_inc(5);
   delay(5);
@@ -596,8 +626,7 @@ void create_ui() {
   lv_obj_set_style_text_font(lbl_clock, get_font_14(), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_text_color(lbl_clock, lv_color_hex(clockColour), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_label_set_text(lbl_clock, "");
-  //lv_obj_align(lbl_clock, LV_ALIGN_TOP_RIGHT, -10, 2);
-  lv_obj_align(lbl_clock, LV_ALIGN_CENTER, 40, -150);
+  lv_obj_align(lbl_clock, LV_ALIGN_CENTER, 40, -145);  // clock position
 }
 
 void populate_results_dropdown() {
@@ -1002,6 +1031,7 @@ static void settings_event_handler(lv_event_t *e) {
     create_ui();
     fetch_and_update_weather();
     inSettingsMode = false;  // we can draw the UV graph again
+    graphInit = false;       // and redo the graphs
     return;
   }
 
@@ -1018,7 +1048,7 @@ static void settings_event_handler(lv_event_t *e) {
     settings_win = nullptr;
 
     inSettingsMode = false;  // we can draw the UV graph again
-
+    graphInit = false;       // redraw the graphs again
     fetch_and_update_weather();
   }
 }
@@ -1117,7 +1147,7 @@ void fetch_and_update_weather() {
 
   if (http.GET() == HTTP_CODE_OK) {
     Serial.println("Updated weather from open-meteo: " + url);
-
+    urlSuccess = true;  // we got a connection!
     String payload = http.getString();
     JsonDocument doc;
 
@@ -1252,6 +1282,7 @@ void fetch_and_update_weather() {
     }
   } else {
     Serial.println("HTTP GET failed at " + url);
+    urlSuccess = false;  // failed GET
   }
   http.end();
 }
