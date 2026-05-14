@@ -60,15 +60,11 @@ uint8_t icon_isolated_scattered_tstorms_day_map[] = {
 };
 
 const lv_image_dsc_t icon_isolated_scattered_tstorms_day = {
-  .header.magic = LV_IMAGE_HEADER_MAGIC,
   .header.cf = LV_COLOR_FORMAT_RGB565A8,
-  .header.flags = 0,
-  .header.w = 20,
-  .header.h = 20,
-  .header.stride = 40,
-  .header.reserved_2 = 0,
+  .header.magic = LV_IMAGE_HEADER_MAGIC,
+  .header.w = 22,
+  .header.h = 22,
   .data_size = sizeof(icon_isolated_scattered_tstorms_day_map),
   .data = icon_isolated_scattered_tstorms_day_map,
-  .reserved = NULL,
 };
 

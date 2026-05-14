@@ -505,6 +505,9 @@ void wifi_splash_screen() {
 }
 
 void create_ui() {
+  int8_t yOffset = -4;   // starting y offset for first row
+  int8_t ySpacing = 25;  // pixels between each row
+
   lv_obj_t *scr = lv_scr_act();
   lv_obj_set_style_bg_color(scr, lv_color_hex(BGcolour), LV_PART_MAIN | LV_STATE_DEFAULT);
   lv_obj_set_style_bg_grad_color(scr, lv_color_hex(topGradientColour), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -565,20 +568,20 @@ void create_ui() {
     lv_obj_add_style(lbl_daily_day[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(lbl_daily_day[i], lv_color_hex(dayNameColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_day[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(lbl_daily_day[i], LV_ALIGN_TOP_LEFT, 2, i * 24);
+    lv_obj_align(lbl_daily_day[i], LV_ALIGN_TOP_LEFT, 2, yOffset + i * ySpacing);
 
     lv_obj_add_style(lbl_daily_high[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
     //lv_obj_set_style_text_color(lbl_daily_high[i], lv_color_hex(dayHighColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_high[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(lbl_daily_high[i], LV_ALIGN_TOP_RIGHT, 0, i * 24);
+    lv_obj_align(lbl_daily_high[i], LV_ALIGN_TOP_RIGHT, 0, yOffset + i * ySpacing);
 
     lv_label_set_text(lbl_daily_low[i], "");
     //lv_obj_set_style_text_color(lbl_daily_low[i], lv_color_hex(dailyLowColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_daily_low[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(lbl_daily_low[i], LV_ALIGN_TOP_RIGHT, -50, i * 24);
+    lv_obj_align(lbl_daily_low[i], LV_ALIGN_TOP_RIGHT, -50, yOffset + i * ySpacing);
 
     lv_img_set_src(img_daily[i], &icon_partly_cloudy);
-    lv_obj_align(img_daily[i], LV_ALIGN_TOP_LEFT, 72, i * 24);
+    lv_obj_align(img_daily[i], LV_ALIGN_TOP_LEFT, 70, yOffset + i * ySpacing);
   }
 
   box_hourly = lv_obj_create(scr);
@@ -603,20 +606,20 @@ void create_ui() {
     lv_obj_add_style(lbl_hourly[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_color(lbl_hourly[i], lv_color_hex(hourlyDayColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_hourly[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(lbl_hourly[i], LV_ALIGN_TOP_LEFT, 2, i * 24);
+    lv_obj_align(lbl_hourly[i], LV_ALIGN_TOP_LEFT, 2, yOffset + i * ySpacing);
 
     lv_obj_add_style(lbl_hourly_temp[i], &default_label_style, LV_PART_MAIN | LV_STATE_DEFAULT);
     //lv_obj_set_style_text_color(lbl_hourly_temp[i], lv_color_hex(hourlyTempColour), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_hourly_temp[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(lbl_hourly_temp[i], LV_ALIGN_TOP_RIGHT, 0, i * 24);
+    lv_obj_align(lbl_hourly_temp[i], LV_ALIGN_TOP_RIGHT, 0, yOffset + i * ySpacing);
 
     lv_label_set_text(lbl_precipitation_probability[i], "");
     //lv_obj_set_style_text_color(lbl_precipitation_probability[i], lv_color_hex(chanceOfPrecip), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(lbl_precipitation_probability[i], get_font_16(), LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(lbl_precipitation_probability[i], LV_ALIGN_TOP_RIGHT, -55, i * 24);
+    lv_obj_align(lbl_precipitation_probability[i], LV_ALIGN_TOP_RIGHT, -55, yOffset + i * ySpacing);
 
     lv_img_set_src(img_hourly[i], &icon_partly_cloudy);
-    lv_obj_align(img_hourly[i], LV_ALIGN_TOP_LEFT, 72, i * 24);
+    lv_obj_align(img_hourly[i], LV_ALIGN_TOP_LEFT, 70, yOffset + i * ySpacing);
   }
 
   lv_obj_add_flag(box_hourly, LV_OBJ_FLAG_HIDDEN);
